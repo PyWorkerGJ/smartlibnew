@@ -65,6 +65,12 @@ export class FrontDeskController {
 
       const student = students[0];
 
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const d = new Date();
+      const istDate = new Date(d.getTime() + (d.getTimezoneOffset() * 60 * 1000) + istOffset);
+      const nowIst = `${istDate.getFullYear()}-${pad(istDate.getMonth() + 1)}-${pad(istDate.getDate())} ${pad(istDate.getHours())}:${pad(istDate.getMinutes())}:${pad(istDate.getSeconds())}`;
+
       // Fetch pending or active reservations today
       const [reservations]: any = await pool.query(
         `SELECT r.*, res.name as resource_name, res.type as resource_type, res.identifier,
@@ -74,9 +80,9 @@ export class FrontDeskController {
          LEFT JOIN sessions s ON s.reservation_id = r.id AND s.status = 'ACTIVE'
          WHERE r.student_id = ?
            AND r.status IN ('PENDING', 'CHECKED_IN')
-           AND r.end_time > NOW()
+           AND r.end_time > ?
          ORDER BY r.start_time ASC`,
-        [student.student_id]
+        [student.student_id, nowIst]
       );
 
       return res.json({

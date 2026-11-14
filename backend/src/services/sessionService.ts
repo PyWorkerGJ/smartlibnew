@@ -34,6 +34,7 @@ export class SessionService {
       // 2. Find eligible reservation
       // Permitted window: from 15 minutes before start_time up to grace_period_minutes after start_time
       const gracePeriod = await getRuleNumber('grace_period_minutes', 15);
+      const nowIst = toIstSqlString(new Date());
 
       const [resRows]: any = await conn.query(
         `SELECT r.*, res.name as resource_name, res.type as resource_type, res.identifier
@@ -41,13 +42,13 @@ export class SessionService {
          JOIN resources res ON r.resource_id = res.id
          WHERE r.student_id = ?
            AND r.status = 'PENDING'
-           AND r.start_time <= DATE_ADD(NOW(), INTERVAL 15 MINUTE)
-           AND r.start_time >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
-           AND r.end_time > NOW()
+           AND r.start_time <= DATE_ADD(?, INTERVAL 30 MINUTE)
+           AND r.start_time >= DATE_SUB(?, INTERVAL ? MINUTE)
+           AND r.end_time > ?
          ORDER BY r.start_time ASC
          LIMIT 1
          FOR UPDATE`,
-        [student.student_id, gracePeriod]
+        [student.student_id, nowIst, nowIst, gracePeriod, nowIst]
       );
 
       if (resRows.length === 0) {
