@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Resource } from '../types';
 import { apiRequest } from '../api';
 import { Users, Tv, Presentation, Wind, Calendar, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -33,12 +33,16 @@ export const RoomBooking: React.FC<RoomBookingProps> = ({ resources, onReservati
 
       const endDateTime = new Date(startDateTime.getTime() + durationMinutes * 60 * 1000);
 
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const formatLocal = (d: Date) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
       await apiRequest('/reservations', {
         method: 'POST',
         body: JSON.stringify({
           resourceId: selectedRoom.id,
-          startTime: startDateTime.toISOString(),
-          endTime: endDateTime.toISOString()
+          startTime: formatLocal(startDateTime),
+          endTime: formatLocal(endDateTime)
         })
       });
 

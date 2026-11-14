@@ -2,10 +2,21 @@ import { pool, withTransaction } from '../db/pool.js';
 import { getRuleNumber } from './rulesService.js';
 import { logAuditEvent } from './auditService.js';
 import { emitRealtimeEvent } from './socketService.js';
+function toIstSqlString(d) {
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(d)) {
+        return d.slice(0, 19);
+    }
+    const date = typeof d === 'string' ? new Date(d) : d;
+    const pad = (n) => String(n).padStart(2, '0');
+    // Format into Indian Standard Time (UTC+5:30)
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(date.getTime() + (date.getTimezoneOffset() * 60 * 1000) + istOffset);
+    return `${istDate.getFullYear()}-${pad(istDate.getMonth() + 1)}-${pad(istDate.getDate())} ${pad(istDate.getHours())}:${pad(istDate.getMinutes())}:${pad(istDate.getSeconds())}`;
+}
 export class ReservationService {
     static async checkAvailability(resourceId, startTime, endTime, excludeReservationId) {
-        const startIso = new Date(startTime).toISOString().slice(0, 19).replace('T', ' ');
-        const endIso = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
+        const startIso = toIstSqlString(startTime);
+        const endIso = toIstSqlString(endTime);
         let sql = `
       SELECT id FROM reservations 
       WHERE resource_id = ? 
@@ -42,9 +53,9 @@ export class ReservationService {
         if (start.getTime() - now.getTime() > maxAdvanceMs) {
             throw { status: 400, message: `Reservations can only be made up to ${advanceDays} days in advance.` };
         }
-        // Store in consistent UTC formatted SQL datetime
-        const startSql = start.toISOString().slice(0, 19).replace('T', ' ');
-        const endSql = end.toISOString().slice(0, 19).replace('T', ' ');
+        // Store in Indian Standard Time (IST)
+        const startSql = toIstSqlString(startTime);
+        const endSql = toIstSqlString(endTime);
         return await withTransaction(async (conn) => {
             // 1. Lock resource
             const [rRows] = await conn.query('SELECT id, type, name, status FROM resources WHERE id = ? FOR UPDATE', [resourceId]);
@@ -77,7 +88,7 @@ export class ReservationService {
          WHERE r.student_id = ? 
            AND res.type = ?
            AND r.status IN ('PENDING', 'CHECKED_IN')
-           AND r.end_time > UTC_TIMESTAMP()`, [studentId, resource.type]);
+           AND r.end_time > NOW()`, [studentId, resource.type]);
             if (countRows[0].count >= maxActive) {
                 throw { status: 400, message: `You have reached the maximum allowed active ${resource.type.toLowerCase().replace('_', ' ')} reservations (${maxActive}).` };
             }
@@ -131,7 +142,7 @@ export class ReservationService {
                 throw { status: 400, message: `Cannot cancel reservation in '${res.status}' status.` };
             }
             await conn.execute(`UPDATE reservations 
-         SET status = 'CANCELLED', cancelled_at = UTC_TIMESTAMP() 
+         SET status = 'CANCELLED', cancelled_at = NOW() 
          WHERE id = ?`, [reservationId]);
             await logAuditEvent(userId, 'CANCEL_RESERVATION', 'RESERVATION', reservationId, { resourceId: res.resource_id }, ipAddress);
             emitRealtimeEvent('RESERVATION_CANCELLED', {

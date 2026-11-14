@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import { z } from 'zod';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import { SessionService } from '../services/sessionService.js';
@@ -74,7 +74,7 @@ export class FrontDeskController {
          LEFT JOIN sessions s ON s.reservation_id = r.id AND s.status = 'ACTIVE'
          WHERE r.student_id = ?
            AND r.status IN ('PENDING', 'CHECKED_IN')
-           AND r.end_time > UTC_TIMESTAMP()
+           AND r.end_time > NOW()
          ORDER BY r.start_time ASC`,
         [student.student_id]
       );

@@ -1,4 +1,4 @@
-﻿import { pool, withTransaction } from '../db/pool.js';
+import { pool, withTransaction } from '../db/pool.js';
 import { getRuleNumber } from '../services/rulesService.js';
 import { logAuditEvent } from '../services/auditService.js';
 import { emitRealtimeEvent } from '../services/socketService.js';
@@ -44,7 +44,7 @@ export class SchedulerJob {
          FROM reservations r
          JOIN resources res ON r.resource_id = res.id
          WHERE r.status = 'PENDING'
-           AND DATE_ADD(r.start_time, INTERVAL ? MINUTE) < UTC_TIMESTAMP()
+           AND DATE_ADD(r.start_time, INTERVAL ? MINUTE) < NOW()
          FOR UPDATE`,
         [graceMinutes]
       );
@@ -54,7 +54,7 @@ export class SchedulerJob {
       for (const row of expiredRows) {
         await conn.execute(
           `UPDATE reservations 
-           SET status = 'EXPIRED', expired_at = UTC_TIMESTAMP() 
+           SET status = 'EXPIRED', expired_at = NOW() 
            WHERE id = ?`,
           [row.id]
         );
@@ -84,7 +84,7 @@ export class SchedulerJob {
          FROM sessions s
          JOIN resources res ON s.resource_id = res.id
          WHERE s.status = 'ACTIVE'
-           AND s.scheduled_end_time <= UTC_TIMESTAMP()
+           AND s.scheduled_end_time <= NOW()
          FOR UPDATE`,
         []
       );
@@ -94,7 +94,7 @@ export class SchedulerJob {
       for (const row of elapsedRows) {
         await conn.execute(
           `UPDATE sessions 
-           SET status = 'RELEASED_AUTO', actual_end_time = UTC_TIMESTAMP(), release_reason = 'Scheduled duration completed'
+           SET status = 'RELEASED_AUTO', actual_end_time = NOW(), release_reason = 'Scheduled duration completed'
            WHERE id = ?`,
           [row.id]
         );

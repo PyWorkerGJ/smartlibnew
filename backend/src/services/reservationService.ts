@@ -1,4 +1,4 @@
-﻿import { pool, withTransaction } from '../db/pool.js';
+import { pool, withTransaction } from '../db/pool.js';
 import { getRuleNumber } from './rulesService.js';
 import { logAuditEvent } from './auditService.js';
 import { emitRealtimeEvent } from './socketService.js';
@@ -12,6 +12,18 @@ export interface CreateReservationParams {
   ipAddress?: string;
 }
 
+function toIstSqlString(d: Date | string): string {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(d)) {
+    return d.slice(0, 19);
+  }
+  const date = typeof d === 'string' ? new Date(d) : d;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  // Format into Indian Standard Time (UTC+5:30)
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(date.getTime() + (date.getTimezoneOffset() * 60 * 1000) + istOffset);
+  return `${istDate.getFullYear()}-${pad(istDate.getMonth() + 1)}-${pad(istDate.getDate())} ${pad(istDate.getHours())}:${pad(istDate.getMinutes())}:${pad(istDate.getSeconds())}`;
+}
+
 export class ReservationService {
   static async checkAvailability(
     resourceId: number,
@@ -19,8 +31,8 @@ export class ReservationService {
     endTime: string,
     excludeReservationId?: number
   ): Promise<boolean> {
-    const startIso = new Date(startTime).toISOString().slice(0, 19).replace('T', ' ');
-    const endIso = new Date(endTime).toISOString().slice(0, 19).replace('T', ' ');
+    const startIso = toIstSqlString(startTime);
+    const endIso = toIstSqlString(endTime);
 
     let sql = `
       SELECT id FROM reservations 
@@ -66,9 +78,10 @@ export class ReservationService {
       throw { status: 400, message: `Reservations can only be made up to ${advanceDays} days in advance.` };
     }
 
-    // Store in consistent UTC formatted SQL datetime
-    const startSql = start.toISOString().slice(0, 19).replace('T', ' ');
-    const endSql = end.toISOString().slice(0, 19).replace('T', ' ');
+    // Store in Indian Standard Time (IST)
+    const startSql = toIstSqlString(startTime);
+    const endSql = toIstSqlString(endTime);
+
 
     return await withTransaction(async (conn) => {
       // 1. Lock resource
@@ -110,7 +123,7 @@ export class ReservationService {
          WHERE r.student_id = ? 
            AND res.type = ?
            AND r.status IN ('PENDING', 'CHECKED_IN')
-           AND r.end_time > UTC_TIMESTAMP()`,
+           AND r.end_time > NOW()`,
         [studentId, resource.type]
       );
 
@@ -196,7 +209,7 @@ export class ReservationService {
 
       await conn.execute(
         `UPDATE reservations 
-         SET status = 'CANCELLED', cancelled_at = UTC_TIMESTAMP() 
+         SET status = 'CANCELLED', cancelled_at = NOW() 
          WHERE id = ?`,
         [reservationId]
       );

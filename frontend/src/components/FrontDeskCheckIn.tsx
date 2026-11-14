@@ -1,5 +1,6 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { apiRequest } from '../api';
+import { formatTime } from '../utils/date';
 import { UserCheck, Search, CheckCircle2, AlertCircle, Armchair, Clock, User } from 'lucide-react';
 
 export const FrontDeskCheckIn: React.FC = () => {
@@ -140,8 +141,7 @@ export const FrontDeskCheckIn: React.FC = () => {
                       <div className="text-xs text-slate-400 flex items-center gap-2 mt-1">
                         <Clock className="h-3 w-3" />
                         <span>
-                          {new Date(res.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} →{' '}
-                          {new Date(res.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime(res.start_time)} → {formatTime(res.end_time)}
                         </span>
                       </div>
                     </div>

@@ -2,6 +2,16 @@ import { pool, withTransaction } from '../db/pool.js';
 import { getRuleNumber } from './rulesService.js';
 import { logAuditEvent } from './auditService.js';
 import { emitRealtimeEvent } from './socketService.js';
+function toIstSqlString(d) {
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(d)) {
+        return d.slice(0, 19);
+    }
+    const date = typeof d === 'string' ? new Date(d) : d;
+    const pad = (n) => String(n).padStart(2, '0');
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(date.getTime() + (date.getTimezoneOffset() * 60 * 1000) + istOffset);
+    return `${istDate.getFullYear()}-${pad(istDate.getMonth() + 1)}-${pad(istDate.getDate())} ${pad(istDate.getHours())}:${pad(istDate.getMinutes())}:${pad(istDate.getSeconds())}`;
+}
 export class SessionService {
     static async checkInByRegNumber(registrationNumber, operatorUserId, ipAddress) {
         return await withTransaction(async (conn) => {
@@ -22,9 +32,9 @@ export class SessionService {
          JOIN resources res ON r.resource_id = res.id
          WHERE r.student_id = ?
            AND r.status = 'PENDING'
-           AND r.start_time <= DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)
-           AND r.start_time >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? MINUTE)
-           AND r.end_time > UTC_TIMESTAMP()
+           AND r.start_time <= DATE_ADD(NOW(), INTERVAL 15 MINUTE)
+           AND r.start_time >= DATE_SUB(NOW(), INTERVAL ? MINUTE)
+           AND r.end_time > NOW()
          ORDER BY r.start_time ASC
          LIMIT 1
          FOR UPDATE`, [student.student_id, gracePeriod]);
@@ -53,12 +63,12 @@ export class SessionService {
             const [sessResult] = await conn.execute(`INSERT INTO sessions (
           reservation_id, student_id, resource_id, check_in_time, scheduled_end_time, 
           status, checked_in_by_user_id
-        ) VALUES (?, ?, ?, UTC_TIMESTAMP(), ?, 'ACTIVE', ?)`, [reservation.id, student.student_id, reservation.resource_id, reservation.end_time, operatorUserId]);
+        ) VALUES (?, ?, ?, NOW(), ?, 'ACTIVE', ?)`, [reservation.id, student.student_id, reservation.resource_id, reservation.end_time, operatorUserId]);
             const sessionId = sessResult.insertId;
             // 5. Create library check-in audit entry
             await conn.execute(`INSERT INTO library_checkins (
           session_id, reservation_id, student_id, registration_number, operator_id, check_in_time
-        ) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP())`, [sessionId, reservation.id, student.student_id, student.registration_number, operatorUserId]);
+        ) VALUES (?, ?, ?, ?, ?, NOW())`, [sessionId, reservation.id, student.student_id, student.registration_number, operatorUserId]);
             await logAuditEvent(operatorUserId, 'PHYSICAL_CHECKIN', 'SESSION', sessionId, {
                 studentId: student.student_id,
                 registrationNumber: student.registration_number,
@@ -105,10 +115,10 @@ export class SessionService {
             }
             const releaseStatus = userRole === 'STUDENT' ? 'RELEASED_MANUAL' : 'RELEASED_FORCE';
             await conn.execute(`UPDATE sessions 
-         SET status = ?, actual_end_time = UTC_TIMESTAMP(), released_by_user_id = ?, release_reason = ?
+         SET status = ?, actual_end_time = NOW(), released_by_user_id = ?, release_reason = ?
          WHERE id = ?`, [releaseStatus, userId, reason || (userRole === 'STUDENT' ? 'Student checkout' : 'Admin override'), sessionId]);
             await conn.execute(`UPDATE reservations 
-         SET status = 'COMPLETED', end_time = LEAST(end_time, UTC_TIMESTAMP())
+         SET status = 'COMPLETED', end_time = LEAST(end_time, NOW())
          WHERE id = ?`, [session.reservation_id]);
             await logAuditEvent(userId, releaseStatus, 'SESSION', sessionId, { resourceId: session.resource_id, reason }, ipAddress);
             emitRealtimeEvent('RESOURCE_RELEASED', {
@@ -159,8 +169,8 @@ export class SessionService {
             if (totalDuration > maxDuration) {
                 throw { status: 400, message: `Extension would exceed maximum total duration of ${maxDuration} minutes.` };
             }
-            const newEndSql = newEndTime.toISOString().slice(0, 19).replace('T', ' ');
-            const currentEndSql = currentScheduledEnd.toISOString().slice(0, 19).replace('T', ' ');
+            const newEndSql = toIstSqlString(newEndTime);
+            const currentEndSql = toIstSqlString(currentScheduledEnd);
             const [conflicts] = await conn.query(`SELECT id FROM reservations
          WHERE resource_id = ?
            AND id != ?

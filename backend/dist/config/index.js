@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config();
+process.env.TZ = 'Asia/Kolkata';
 export const config = {
     port: parseInt(process.env.PORT || '5000', 10),
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -14,7 +15,7 @@ export const config = {
         waitForConnections: true,
         connectionLimit: 15,
         queueLimit: 0,
-        timezone: 'Z',
+        timezone: '+05:30',
         dateStrings: true
     }
 };

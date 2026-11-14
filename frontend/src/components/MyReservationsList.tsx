@@ -1,6 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Reservation } from '../types';
 import { apiRequest } from '../api';
+import { formatDateTime, formatTime } from '../utils/date';
 import { Calendar, Clock, Armchair, Ban, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface MyReservationsProps {
@@ -79,7 +80,7 @@ export const MyReservationsList: React.FC<MyReservationsProps> = ({ reservations
                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 mt-1.5">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5 text-slate-500" />
-                    {new Date(res.start_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} → {new Date(res.end_time).toLocaleTimeString([], { timeStyle: 'short' })}
+                    {formatDateTime(res.start_time)} → {formatTime(res.end_time)}
                   </span>
                   <span>Floor {res.floor} • {res.zone}</span>
                 </div>

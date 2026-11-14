@@ -40,13 +40,13 @@ export class SchedulerJob {
          FROM reservations r
          JOIN resources res ON r.resource_id = res.id
          WHERE r.status = 'PENDING'
-           AND DATE_ADD(r.start_time, INTERVAL ? MINUTE) < UTC_TIMESTAMP()
+           AND DATE_ADD(r.start_time, INTERVAL ? MINUTE) < NOW()
          FOR UPDATE`, [graceMinutes]);
             if (expiredRows.length === 0)
                 return;
             for (const row of expiredRows) {
                 await conn.execute(`UPDATE reservations 
-           SET status = 'EXPIRED', expired_at = UTC_TIMESTAMP() 
+           SET status = 'EXPIRED', expired_at = NOW() 
            WHERE id = ?`, [row.id]);
                 await logAuditEvent(null, 'NO_SHOW_EXPIRY', 'RESERVATION', row.id, { resourceId: row.resource_id, studentId: row.student_id, resourceName: row.resource_name });
                 emitRealtimeEvent('RESERVATION_EXPIRED', {
@@ -63,13 +63,13 @@ export class SchedulerJob {
          FROM sessions s
          JOIN resources res ON s.resource_id = res.id
          WHERE s.status = 'ACTIVE'
-           AND s.scheduled_end_time <= UTC_TIMESTAMP()
+           AND s.scheduled_end_time <= NOW()
          FOR UPDATE`, []);
             if (elapsedRows.length === 0)
                 return;
             for (const row of elapsedRows) {
                 await conn.execute(`UPDATE sessions 
-           SET status = 'RELEASED_AUTO', actual_end_time = UTC_TIMESTAMP(), release_reason = 'Scheduled duration completed'
+           SET status = 'RELEASED_AUTO', actual_end_time = NOW(), release_reason = 'Scheduled duration completed'
            WHERE id = ?`, [row.id]);
                 await conn.execute(`UPDATE reservations 
            SET status = 'COMPLETED'

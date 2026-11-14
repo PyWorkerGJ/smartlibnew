@@ -1,6 +1,7 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ActiveSession } from '../types';
 import { apiRequest } from '../api';
+import { parseDate, formatTime } from '../utils/date';
 import { Clock, Armchair, PlusCircle, LogOut, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface CurrentSessionProps {
@@ -35,7 +36,7 @@ export const CurrentSessionView: React.FC<CurrentSessionProps> = ({ onSessionCha
     if (!session) return;
 
     const interval = setInterval(() => {
-      const end = new Date(session.scheduled_end_time).getTime();
+      const end = parseDate(session.scheduled_end_time).getTime();
       const now = new Date().getTime();
       const diff = end - now;
 
@@ -127,7 +128,7 @@ export const CurrentSessionView: React.FC<CurrentSessionProps> = ({ onSessionCha
           </h2>
           <p className="text-xs text-slate-400">
             Floor {session.floor} • {session.zone} • Checked In at{' '}
-            {new Date(session.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatTime(session.check_in_time)}
           </p>
         </div>
 
@@ -138,7 +139,7 @@ export const CurrentSessionView: React.FC<CurrentSessionProps> = ({ onSessionCha
           <div className="text-2xl font-black font-mono text-blue-300 mt-1">{remainingTime}</div>
           <span className="text-[11px] text-slate-500">
             Scheduled End:{' '}
-            {new Date(session.scheduled_end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatTime(session.scheduled_end_time)}
           </span>
         </div>
       </div>
