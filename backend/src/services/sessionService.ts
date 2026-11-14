@@ -293,20 +293,25 @@ export class SessionService {
       const currentEndSql = toIstSqlString(currentScheduledEnd);
 
       const [conflicts]: any = await conn.query(
-        `SELECT id FROM reservations
-         WHERE resource_id = ?
-           AND id != ?
-           AND status IN ('PENDING', 'CHECKED_IN')
-           AND start_time < ?
-           AND end_time > ?
+        `SELECT r.id, r.start_time, res.name as resource_name
+         FROM reservations r
+         JOIN resources res ON r.resource_id = res.id
+         WHERE r.resource_id = ?
+           AND r.id != ?
+           AND r.status IN ('PENDING', 'CHECKED_IN')
+           AND r.start_time < ?
+           AND r.end_time > ?
+         ORDER BY r.start_time ASC
+         LIMIT 1
          FOR UPDATE`,
         [session.resource_id, session.reservation_id, newEndSql, currentEndSql]
       );
 
       if (conflicts.length > 0) {
+        const nextBooking = conflicts[0];
         throw { 
           status: 409, 
-          message: 'Cannot extend session: Another student has a reservation immediately following your scheduled slot.' 
+          message: `Cannot extend session: ${nextBooking.resource_name} is already reserved by another student starting at ${nextBooking.start_time}. Extensions that conflict with upcoming bookings are strictly disallowed.` 
         };
       }
 
