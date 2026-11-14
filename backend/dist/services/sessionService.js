@@ -78,16 +78,16 @@ export class SessionService {
             }
             // 4. Update reservation status
             await conn.execute(`UPDATE reservations SET status = 'CHECKED_IN' WHERE id = ?`, [reservation.id]);
-            // 4. Create active session record
+            // 5. Create active session record (Record exact IST check-in time)
             const [sessResult] = await conn.execute(`INSERT INTO sessions (
           reservation_id, student_id, resource_id, check_in_time, scheduled_end_time, 
           status, checked_in_by_user_id
-        ) VALUES (?, ?, ?, NOW(), ?, 'ACTIVE', ?)`, [reservation.id, student.student_id, reservation.resource_id, reservation.end_time, operatorUserId]);
+        ) VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?)`, [reservation.id, student.student_id, reservation.resource_id, nowIst, reservation.end_time, operatorUserId]);
             const sessionId = sessResult.insertId;
-            // 5. Create library check-in audit entry
+            // 6. Create library check-in audit entry
             await conn.execute(`INSERT INTO library_checkins (
           session_id, reservation_id, student_id, registration_number, operator_id, check_in_time
-        ) VALUES (?, ?, ?, ?, ?, NOW())`, [sessionId, reservation.id, student.student_id, student.registration_number, operatorUserId]);
+        ) VALUES (?, ?, ?, ?, ?, ?)`, [sessionId, reservation.id, student.student_id, student.registration_number, operatorUserId, nowIst]);
             await logAuditEvent(operatorUserId, 'PHYSICAL_CHECKIN', 'SESSION', sessionId, {
                 studentId: student.student_id,
                 registrationNumber: student.registration_number,
@@ -133,12 +133,13 @@ export class SessionService {
                 }
             }
             const releaseStatus = userRole === 'STUDENT' ? 'RELEASED_MANUAL' : 'RELEASED_FORCE';
+            const nowIst = toIstSqlString(new Date());
             await conn.execute(`UPDATE sessions 
-         SET status = ?, actual_end_time = NOW(), released_by_user_id = ?, release_reason = ?
-         WHERE id = ?`, [releaseStatus, userId, reason || (userRole === 'STUDENT' ? 'Student checkout' : 'Admin override'), sessionId]);
+         SET status = ?, actual_end_time = ?, released_by_user_id = ?, release_reason = ?
+         WHERE id = ?`, [releaseStatus, nowIst, userId, reason || (userRole === 'STUDENT' ? 'Student checkout' : 'Admin override'), sessionId]);
             await conn.execute(`UPDATE reservations 
-         SET status = 'COMPLETED', end_time = LEAST(end_time, NOW())
-         WHERE id = ?`, [session.reservation_id]);
+         SET status = 'COMPLETED', end_time = LEAST(end_time, ?)
+         WHERE id = ?`, [nowIst, session.reservation_id]);
             await logAuditEvent(userId, releaseStatus, 'SESSION', sessionId, { resourceId: session.resource_id, reason }, ipAddress);
             emitRealtimeEvent('RESOURCE_RELEASED', {
                 resourceId: session.resource_id,
@@ -203,9 +204,15 @@ export class SessionService {
          FOR UPDATE`, [session.resource_id, session.reservation_id, newEndSql, currentEndSql]);
             if (conflicts.length > 0) {
                 const nextBooking = conflicts[0];
+                const timePart = String(nextBooking.start_time).split(' ')[1] || String(nextBooking.start_time);
+                const [h, m] = timePart.split(':');
+                const hourNum = parseInt(h || '0', 10);
+                const ampm = hourNum >= 12 ? 'PM' : 'AM';
+                const displayH = hourNum % 12 || 12;
+                const friendlyTime = `${displayH}:${m || '00'} ${ampm}`;
                 throw {
                     status: 409,
-                    message: `Cannot extend session: ${nextBooking.resource_name} is already reserved by another student starting at ${nextBooking.start_time}. Extensions that conflict with upcoming bookings are strictly disallowed.`
+                    message: `Cannot extend session: ${nextBooking.resource_name} is already reserved by another student starting at ${friendlyTime}. Extensions that conflict with upcoming bookings are strictly disallowed.`
                 };
             }
             await conn.execute(`UPDATE sessions 
