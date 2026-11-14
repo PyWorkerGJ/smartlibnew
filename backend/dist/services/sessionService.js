@@ -58,7 +58,25 @@ export class SessionService {
                 throw { status: 404, message: `No eligible pending reservation found for student ${student.name} within the check-in window.` };
             }
             const reservation = resRows[0];
-            // 3. Update reservation status
+            // 3. Early check-in clash check:
+            // If student arrives early before scheduled start_time, check if another active session is still using the resource
+            const [currentClashes] = await conn.query(`SELECT s.id as session_id, s.scheduled_end_time, u.name as current_occupant, res.name as resource_name
+         FROM sessions s
+         JOIN students st ON s.student_id = st.id
+         JOIN users u ON st.user_id = u.id
+         JOIN resources res ON s.resource_id = res.id
+         WHERE s.resource_id = ?
+           AND s.status = 'ACTIVE'
+           AND s.reservation_id != ?
+         LIMIT 1`, [reservation.resource_id, reservation.id]);
+            if (currentClashes.length > 0) {
+                const clash = currentClashes[0];
+                throw {
+                    status: 409,
+                    message: `Cannot check in early: ${clash.resource_name} is currently occupied until ${clash.scheduled_end_time}. Early arrival check-in is only allowed when the resource is completely free.`
+                };
+            }
+            // 4. Update reservation status
             await conn.execute(`UPDATE reservations SET status = 'CHECKED_IN' WHERE id = ?`, [reservation.id]);
             // 4. Create active session record
             const [sessResult] = await conn.execute(`INSERT INTO sessions (
